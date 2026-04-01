@@ -69,5 +69,6 @@ The analytical suite (`database_schema_and_analytics.sql`) utilizes advanced Pos
 ---
 
 ### Author
+Dorcas Oheneba Mensah
 **[Your Name]**
 *Financial Data Modeler | SQL Developer*
