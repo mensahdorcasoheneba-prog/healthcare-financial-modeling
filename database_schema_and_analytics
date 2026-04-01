@@ -1,0 +1,354 @@
+- Create appointments table
+CREATE TABLE public.appointments (
+   appointment_id SERIAL PRIMARY KEY,
+   patient_id INT,
+   doctor_id INT,
+   appointment_date DATE,
+   status VARCHAR(20)
+);
+
+-- Create billing table
+CREATE TABLE public.billing (
+   billing_id SERIAL PRIMARY KEY,
+   patient_id INT,
+   amount DECIMAL(10,2),
+   billing_date DATE,
+   payment_status VARCHAR(20)
+);
+
+-- Create diagnosis table
+CREATE TABLE public.diagnosis (
+   diagnosis_id SERIAL PRIMARY KEY,
+   patient_id INT,
+   diagnosis_text TEXT,
+   diagnosis_date DATE
+);
+
+-- Create doctors table
+CREATE TABLE public.doctors (
+   doctor_id SERIAL PRIMARY KEY,
+   first_name VARCHAR(50),
+   last_name VARCHAR(50),
+   specialty VARCHAR(100)
+);
+
+-- Create medications table
+CREATE TABLE public.medications (
+   medication_id SERIAL PRIMARY KEY,
+   patient_id INT,
+   medication_name VARCHAR(100),
+   dosage VARCHAR(50),
+   start_date DATE,
+   end_date DATE
+);
+
+-- Create patients table
+CREATE TABLE public.patients (
+   patient_id SERIAL PRIMARY KEY,
+   first_name VARCHAR(50),
+   last_name VARCHAR(50),
+   gender VARCHAR(10),
+   date_of_birth DATE,
+   city VARCHAR(100),
+   insurance_provider VARCHAR(100)
+
+   1. List all patients who live in Seattle
+SELECT patient_id, CONCAT(first_name, ' ', last_name) AS patient_full_name
+FROM patients
+WHERE city='Seattle';
+
+--2. Find all medications where the dosage is greater than 50mg
+SELECT medication_name, dosage
+FROM medications
+--WHERE  CAST(SUBSTRING(dosage, 1, LENGTH(dosage) - 2) AS DECIMAL) > 50
+WHERE CAST(REPLACE(dosage, 'mg', '') AS REAL) > 50
+--ORDER BY dosage DESC
+;
+
+--3.  GET ALL COMPLETED APPOINTMENTS IN FEBRUARY 2024 (*2025)
+SELECT appointment_id, status, appointment_date
+FROM appointments
+WHERE status = 'Completed'
+AND appointment_date >='2025-02-01'
+AND appointment_date< '2025-03-01'
+;
+
+--4 SHOW EACH DOCTOR AND HOW MANY APPOINTMENTS THEY COMPLETED
+SELECT d.doctor_name, COUNT(a.appointment_id) AS number_of_appointments_completed
+FROM doctors AS d
+JOIN appointments AS a
+USING(doctor_id)
+WHERE a.status='Completed'
+GROUP BY d.doctor_name
+ORDER BY number_of_appointments_completed DESC;
+
+--5 FIND THE MOST COMMON DIAGNOSIS IN THE DATABASE
+WITH common_diagnosis AS(
+  SELECT diagnosis_code, COUNT(diagnosis) AS most_common_diagnosis
+  FROM diagnosis
+  GROUP BY diagnosis_code
+)
+SELECT diagnosis_code, most_common_diagnosis
+FROM common_diagnosis
+WHERE most_common_diagnosis= (
+SELECT MAX(most_common_diagnosis)
+FROM common_diagnosis 
+  );
+-- 5 WITH LIMIT
+SELECT diagnosis_code, COUNT(diagnosis_code) AS most_common_diagnosis
+FROM diagnosis
+GROUP BY diagnosis_code
+ORDER BY most_common_diagnosis DESC
+LIMIT 1;
+
+--  6 List the total billing amount per patient
+SELECT p.patient_id, CONCAT(p.first_name, ' ', p.last_name) AS patient_full_name, 
+  SUM(b.amount) AS total_billing_amount
+FROM patients AS p
+JOIN appointments AS a
+USING(patient_id)
+JOIN billing AS b
+USING(appointment_id)
+GROUP BY p.patient_id, patient_full_name
+ORDER BY total_billing_amount DESC;
+
+--7 Which clinic location has the highest number of appointments?
+SELECT d.clinic_location, COUNT(a.appointment_id) AS number_of_appointments
+FROM appointments AS a
+JOIN doctors AS d
+USING (doctor_id)
+GROUP BY d.clinic_location
+ORDER BY number_of_appointments DESC
+LIMIT 1;
+
+--8 Identify patients who have more than one diagnosis in 2024
+SELECT p.patient_id, CONCAT(p.first_name, '  ', p.last_name) AS patient_full_name,
+COUNT(diagnosis_id) AS number_of_diagnosis
+FROM patients AS p 
+JOIN appointments AS a
+USING(patient_id)
+JOIN diagnosis AS d
+USING(appointment_id)
+WHERE EXTRACT(YEAR FROM a.appointment_date) =2024
+GROUP BY p.patient_id, patient_full_name
+HAVING COUNT(d.diagnosis_id)>1
+ORDER BY number_of_diagnosis
+;
+--8 with CTE
+WITH patient_diagnosis_count AS(
+  SELECT p.patient_id, CONCAT(p.first_name, '  ', p.last_name) AS patient_full_name, 
+  COUNT(diagnosis_id) AS number_of_diagnosis
+  FROM patients AS p 
+  JOIN appointments AS a
+  USING(patient_id)
+  JOIN diagnosis AS d
+  USING(appointment_id)
+  WHERE  EXTRACT(YEAR FROM a.appointment_date )=2024
+  GROUP BY p.patient_id, patient_full_name
+)
+
+SELECT * 
+FROM patient_diagnosis_count
+WHERE number_of_diagnosis>1
+ORDER BY number_of_diagnosis;
+
+--7 Which clinic location has the highest number of appointments?
+SELECT clinic_location, COUNT(appointment_id) AS total_appointments
+FROM doctors AS d
+JOIN appointments AS a
+USING(doctor_id)
+GROUP BY clinic_location
+ORDER BY total_appointments DESC
+LIMIT 1;
+
+----8 Identify patients who have more than one diagnosis in 2024
+SELECT p.patient_id, CONCAT(p.first_name, ' ', p.last_name) AS patient_full_name,
+COUNT(d.diagnosis_id) AS number_of_diagnosis
+FROM patients AS p
+JOIN appointments AS a
+USING (patient_id)
+JOIN diagnosis AS d
+USING (appointment_id)
+WHERE EXTRACT(YEAR FROM a.appointment_date)=2024
+GROUP BY p.patient_id, patient_full_name
+HAVING COUNT(d.diagnosis_id) > 1
+ORDER BY number_of_diagnosis;
+
+--9 RANK DOCTORS BY TOTAL REVENUE GENERATED
+SELECT d.doctor_id, d.doctor_name, SUM(b.amount)  AS total_revenue, 
+RANK() OVER (ORDER BY SUM(b.amount) DESC ) AS doctor_rank_by_revenue
+FROM doctors AS d
+JOIN appointments AS a
+USING(doctor_id)
+JOIN billing AS b
+USING(appointment_id)
+GROUP BY d.doctor_id, d.doctor_name
+ORDER BY doctor_rank_by_revenue ;
+
+--10 FOR EACH PATIENT, SHOW THEIR MOST RECENT APPOINTMENT
+SELECT p.patient_id, CONCAT(p.first_name, ' ', p.last_name) AS patient_full_name, a.appointment_id, a.appointment_date
+FROM patients AS p
+JOIN appointments AS a
+USING(patient_id)
+WHERE (p.patient_id, a.appointment_date) IN (
+  SELECT p2.patient_id, MAX(a2.appointment_date)
+  FROM patients AS p2
+  JOIN appointments AS A2
+  USING(patient_id)
+  GROUP BY p2.patient_id  
+)
+ORDER BY p.patient_id;
+
+--11 IDENTIFY PATIENTS WHOSE INSURANCE COVER LESS THAN 70% OF THEIR BILL
+SELECT
+  p.patient_id,
+  p.first_name,
+  p.last_name,
+  b.amount,
+  TRUNC(b.insurance_covered::decimal/b.amount, 2) AS percentage_covered,
+  b.insurance_covered,
+  p.insurance_provider
+FROM patients AS p
+JOIN appointments AS a
+USING(patient_id)
+JOIN billing AS b
+USING(appointment_id)
+WHERE b.insurance_covered< 0.7* b.amount
+ORDER BY percentage_covered DESC;
+
+--12 Identify all diabetic patients and list their last medication renewal date.
+SELECT p.first_name||''||p.last_name AS patient_name, MAX(m.end_date)
+  FROM medications AS m
+  JOIN patients AS p
+  USING(patient_id)
+WHERE medication_name='Metformin'
+  GROUP BY patient_name
+;
+--13 Which doctor has the lowest noshow rate?
+SELECT d.doctor_name, COUNT(a.status) AS number_of_no_show
+FROM doctors AS d
+JOIN appointments AS a
+USING (doctor_id)
+WHERE a.status='No-show'
+GROUP BY d.doctor_name
+ORDER BY  number_of_no_show
+--LIMIT 1
+;
+--14 Which age group has the highest incidence of hypertension (I10)?
+SELECT 
+CASE
+  WHEN EXTRACT(YEAR FROM AGE(p.date_of_birth)) BETWEEN 0 AND 17
+      THEN 'Children'
+  WHEN EXTRACT(YEAR FROM AGE(p.date_of_birth)) BETWEEN 18 AND 35
+      THEN 'Young Adult'
+  WHEN EXTRACT(YEAR FROM AGE(p.date_of_birth)) BETWEEN 36 AND 50
+      THEN ' Senior Adult'
+  WHEN EXTRACT(YEAR FROM AGE(p.date_of_birth)) BETWEEN 51 AND 80
+      THEN 'Elder'
+  ELSE 'Senior Citizens'
+END AS  age_group ,
+  COUNT(d.diagnosis_code) AS hypertension_count
+FROM patients AS p
+JOIN appointments AS a
+USING(patient_id)
+JOIN diagnosis AS d
+USING(appointment_id)
+WHERE d.diagnosis_code='I10'
+GROUP BY age_group
+ORDER BY hypertension_count DESC
+--LIMIT 1
+  ;
+--15 Which insurance provider covers the highest average amount?
+SELECT p.insurance_provider, AVG(b.insurance_covered) average_amount_covered
+FROM  patients AS p
+JOIN appointments AS a
+USING(patient_id)
+JOIN billing AS b
+USING(appointment_id)
+GROUP BY p.insurance_provider
+ORDER BY average_amount_covered DESC
+LIMIT 1
+;
+
+--16 Determine peak days of the week for appointments.
+SELECT CASE
+   EXTRACT(DOW FROM a.appointment_date) 
+  WHEN 0 THEN 'Sunday'
+  WHEN 1 THEN 'Monday'
+  WHEN 2 THEN 'Tuesday'
+  WHEN 3 THEN 'Wednesday'
+  WHEN 4 THEN 'Thursday'
+  WHEN 5 THEN 'Friday'
+  WHEN 6 THEN 'Saturday'
+END AS day_of_week,
+COUNT (a.appointment_id) AS number_of_appointments
+FROM appointments AS a
+GROUP BY day_of_week
+ORDER BY number_of_appointments DESC;
+
+--17 . From this data set, write out 3 other queries based on 
+--what was taught in class but the queries should not be part
+--of what has been asked already
+--FIND DOCTORS WITH APPOINTMENT RATE ABOVE AVERAGE
+WITH appointment_count AS(
+  SELECT d.doctor_id, d.doctor_name AS doctor_name, COUNT (a.appointment_id) AS number_of_appointments
+  FROM doctors AS d
+  JOIN appointments AS a
+  USING(doctor_id)
+  GROUP BY d.doctor_name, d.doctor_id
+)
+  ,
+avg_appointment AS(
+  SELECT AVG(number_of_appointments) OVER() AS average_number_of_appointments
+  FROM appointment_count
+)
+SELECT ac.doctor_name, ac.doctor_id, ac.number_of_appointments
+FROM appointment_count AS ac, avg_appointment AS aa
+WHERE ac.number_of_appointments> aa.average_number_of_appointments
+GROUP BY ac.doctor_id, ac.doctor_name, ac.number_of_appointments
+ORDER BY ac.number_of_appointments;
+
+--For each doctor, show each patient and the next scheduled patient visit?
+
+SELECT
+
+    a.doctor_id,
+
+    d.doctor_name,
+
+    a.patient_id,
+
+    p.first_name || ' ' || p.last_name AS patient_name,
+
+    a.appointment_date,
+
+    LEAD(p.first_name || ' ' || p.last_name)
+
+        OVER (PARTITION BY a.doctor_id ORDER BY a.appointment_date) AS next_patient
+
+FROM appointments a
+
+JOIN doctors d ON a.doctor_id = d.doctor_id
+
+JOIN patients p ON a.patient_id = p.patient_id
+
+--Return each appointment with its diagnosis description and bill amount
+
+SELECT a.appointment_id, a.appointment_date, d.diagnosis_code, d.diagnosis_description, b.amount AS bill_amount
+
+FROM appointments AS a
+
+JOIN diagnoses AS d ON d.appointment_id = a.appointment_id
+
+JOIN billing AS b ON b.appointment_id = d.appointment_id;
+
+--Count how many diagnosis each appointment has
+
+SELECT appointment_id, COUNT(*) AS diagnosis_count
+
+FROM diagnoses
+
+GROUP BY appointment_id
+
+ORDER BY diagnosis_count DESC;
+);
